@@ -78,13 +78,14 @@
     file: P('<path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M14 3v6h6"/>'),
     ext: P('<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/>'),
     x: P('<path d="M6 6l12 12M18 6L6 18"/>'),
+    heart: P('<path d="M12 20s-7-4.4-9.2-8.6C1.2 8.2 3 4.6 6.6 4.6c2.2 0 3.6 1.4 5.4 3.4 1.8-2 3.2-3.4 5.4-3.4 3.6 0 5.4 3.6 3.8 6.8C19 15.6 12 20 12 20z"/>'),
     bell: P('<path d="M6 8a6 6 0 1112 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 004 0"/>'),
   };
 
   // ---------- estado ----------
   const S = {
     lists: store.get('lists', []),
-    settings: Object.assign({ omdbKey: '', tmdbKey: '', ua: '', subLang: 'pt', audioLang: '', subSize: 'M', showImdb: true, autoUpdate: true, hideAdult: true },
+    settings: Object.assign({ omdbKey: '', tmdbKey: '', ua: '', skipIntro: 85, subLang: 'pt', audioLang: '', subSize: 'M', showImdb: true, autoUpdate: true, hideAdult: true },
       store.get('settings', {})),
     favs: new Set(store.get('favs', [])),
     history: store.get('history', []),
@@ -277,13 +278,14 @@
   const NAV = [
     { r: 'search', label: 'Buscar', ic: 'search', tvOnly: true },
     { r: 'home', label: 'Início', ic: 'home' },
+    { r: 'mine', label: 'Minha área', ic: 'heart' },
     { r: 'news', label: 'Novidades', ic: 'sparkle', tvOnly: true },
     { r: 'live', label: 'TV ao vivo', ic: 'tv' },
     { r: 'movies', label: 'Filmes', ic: 'film' },
     { r: 'series', label: 'Séries', ic: 'series' },
     { r: 'settings', label: TV ? 'Configurações' : 'Ajustes', ic: 'gear' },
   ];
-  const TOP = { home: 'home', news: 'news', live: 'live', movies: 'movies', series: 'series', search: 'search', settings: 'settings', add: 'settings', addform: 'settings', detail: null };
+  const TOP = { mine: 'mine', home: 'home', news: 'news', live: 'live', movies: 'movies', series: 'series', search: 'search', settings: 'settings', add: 'settings', addform: 'settings', detail: null };
   function renderNav() {
     $('#nav').innerHTML = LOGO() + NAV.map((n) =>
       `<button class="ni f ${n.tvOnly ? 'tvonly' : ''}" data-act="nav" data-r="${n.r}" data-k="nav:${n.r}">${I[n.ic]}<span>${n.label}</span></button>`).join('');
@@ -387,9 +389,14 @@
       ${withActs ? `<div class="acts"><button class="btn pri f" data-act="playItem" data-id="${it.id}" data-k="hero:play">${I.play}Assistir</button>
       <button class="btn f" data-act="open" data-id="${it.id}" data-k="hero:info">${TV ? I.info + 'Mais informações' : I.plus + 'Detalhes'}</button></div>` : ''}</div></section>`;
   }
+  /** Histórico: gravado pelo player nativo (inclui trocas de canal/episódio feitas dentro dele). */
+  function histList() {
+    if (N && N.history) { try { return JSON.parse(N.history() || '[]'); } catch (e) { return []; } }
+    return S.history;
+  }
   function continueItems() {
     if (!N) return [];
-    return S.history.map((h) => {
+    return histList().filter((h) => h.kind !== 'channel').map((h) => {
       let p = {};
       try { p = JSON.parse(N.progress(h.url) || '{}'); } catch (e) { p = {}; }
       const pct = p.dur ? Math.round((p.pos / p.dur) * 100) : 0;
@@ -428,6 +435,28 @@
   };
   const recentOf = (arr) => (arr.some((x) => x.added) ? arr.slice().sort((a, b) => (b.added || 0) - (a.added || 0)) : arr.slice().reverse());
   const topRated = (arr) => arr.filter((x) => imdbVal(x) > 0).sort((a, b) => imdbVal(b) - imdbVal(a)).slice(0, 30);
+
+  // --- Minha área ---
+  SCREENS.mine = () => {
+    const head = TV ? `<div class="thead"><h1>Minha área</h1></div>` : `<div class="phead"><h1>Minha área</h1></div>`;
+    if (!S.lists.length) return head + emptyLists();
+    const rows = [];
+    const cont = continueItems();
+    if (cont.length) rows.push(row('Continuar assistindo', '', cont.map((x) => `<div class="cap">${landCard(x, 'mc', { act: 'resume', bar: x.pct })}<span class="ct">${esc(x.title)}</span><button class="chip f" data-act="forgetHist" data-id="${esc(x.id)}" data-k="mf:${esc(x.id)}" style="align-self:flex-start">Remover</button></div>`).join('')));
+    const seenCh = histList().filter((h) => h.kind === 'channel').map((h) => S.byId.get(h.id)).filter(Boolean).slice(0, 20);
+    if (seenCh.length) rows.push(row('Canais assistidos recentemente', '', seenCh.map((c) => chCard(c, 'mr')).join('')));
+    const favCh = S.cat.channels.filter((c) => S.favs.has(c.id));
+    if (favCh.length) rows.push(row('Canais favoritos', num(favCh.length), favCh.slice(0, 60).map((c) => chCard(c, 'mfc')).join('')));
+    const favMv = S.cat.movies.filter((x) => S.favs.has(x.id));
+    if (favMv.length) rows.push(row('Filmes favoritos', num(favMv.length), favMv.slice(0, 60).map((x) => posterCard(x, 'mfm')).join('')));
+    const favSe = S.cat.series.filter((x) => S.favs.has(x.id));
+    if (favSe.length) rows.push(row('Séries favoritas', num(favSe.length), favSe.slice(0, 60).map((x) => posterCard(x, 'mfs')).join('')));
+    if (!rows.length) {
+      return head + `<div class="empty" style="padding-top:${TV ? '2rem' : '1rem'}"><p>Aqui ficam o que você está assistindo e seus favoritos. Toque em “Minha lista” num filme ou série, ou em ☆ num canal, para salvar.</p>
+        <button class="btn pri f" data-act="nav" data-r="home" data-autofocus>${I.home}Ir para o Início</button></div>`;
+    }
+    return head + `<div class="rows">${rows.join('')}</div>`;
+  };
 
   // --- TV ao vivo ---
   function liveChannels(cat) {
@@ -563,7 +592,7 @@
       if (it.seasons) {
         const ks = Object.keys(it.seasons).sort((x, y) => x - y);
         // continua do último episódio assistido desta série
-        const h = S.history.find((x) => x.id === it.id);
+        const h = histList().find((x) => x.id === it.id);
         let sk = ks[0], ei = 0;
         if (h) ks.forEach((k) => (it.seasons[k] || []).forEach((e, i) => { if (e.url === h.url) { sk = k; ei = i; } }));
         const e = sk && it.seasons[sk] && it.seasons[sk][ei];
@@ -691,6 +720,7 @@
   const SUBS = [['pt', 'Português'], ['en', 'Inglês'], ['es', 'Espanhol'], ['off', 'Desligadas']];
   const AUDIO = [['', 'Original'], ['pt', 'Português (dublado)'], ['en', 'Inglês']];
   const SIZES = [['P', 'Pequeno'], ['M', 'Médio'], ['G', 'Grande']];
+  const SKIPS = [[0, 'Desligado'], [30, '30 segundos'], [60, '60 segundos'], [85, '85 segundos (padrão)'], [90, '90 segundos'], [120, '2 minutos']];
   const UAS = [['', 'Automático (recomendado)'], ['VLC/3.0.20 LibVLC/3.0.20', 'VLC'], ['IPTVSmartersPlayer', 'IPTV Smarters'],
     ['TiviMate/5.1.6 (Android 11)', 'TiviMate'], ['okhttp/4.12.0', 'Android (okhttp)'],
     ['Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36', 'Navegador']];
@@ -728,9 +758,10 @@
       ${prow('Idioma da legenda', lab(SUBS, S.settings.subLang), 'pickSub', 'p:sub')}
       ${prow('Áudio preferido', lab(AUDIO, S.settings.audioLang), 'pickAudio', 'p:aud')}
       ${prow('Tamanho da legenda', lab(SIZES, S.settings.subSize), 'pickSize', 'p:size')}
+      ${prow('Pular abertura (séries)', lab(SKIPS, +S.settings.skipIntro), 'pickSkip', 'p:skip')}
       ${prow('Identificar o app como', lab(UAS, S.settings.ua || ''), 'pickUa', 'p:ua')}</div>
       <p class="hint">Alguns servidores só aceitam players conhecidos. No modo automático o app testa VLC, IPTV Smarters, TiviMate e outros até o servidor aceitar.</p>
-      <p class="hint">Durante o vídeo, use o botão de legendas e o de configurações do player para trocar faixas de áudio e legenda.</p>`,
+      <p class="hint">No player: ◀ (ou o botão Canais/Episódios) abre a lista para trocar de canal ou episódio; ▲▼ trocam de canal; OK em “Pular abertura” avança o tempo escolhido acima. Use o botão de legendas e o de configurações do player para trocar faixas.</p>`,
     show: () => `<h2>Exibição</h2><div class="panel">${toggle('Mostrar notas IMDb', 'showImdb')}${toggle('Atualizar listas automaticamente', 'autoUpdate')}${toggle('Ocultar conteúdo adulto', 'hideAdult')}</div>`,
     keys: () => `<h2>Chaves de API</h2>
       <p class="hint">Opcionais e gratuitas. Ficam salvas só neste aparelho.</p>
@@ -938,35 +969,66 @@
   // ---------- reprodução ----------
   function playerPrefs() {
     const s = S.settings;
-    return { subLang: s.subLang === 'off' ? '' : s.subLang, subsOff: s.subLang === 'off', audioLang: s.audioLang, subSize: s.subSize };
+    return { subLang: s.subLang === 'off' ? '' : s.subLang, subsOff: s.subLang === 'off', audioLang: s.audioLang, subSize: s.subSize, skipIntro: +s.skipIntro || 0 };
   }
   function nativePlay(payload) {
     if (!N) { toast('A reprodução funciona no app instalado (Android)'); console.log('play', payload); return; }
     N.play(JSON.stringify(Object.assign(playerPrefs(), payload)));
   }
   function playChannel(ch) {
-    const list = S.route.name === 'live' && S.liveList.includes(ch) ? S.liveList : (S.favs.has(ch.id) ? S.cat.channels.filter((c) => S.favs.has(c.id)) : S.cat.channels.filter((c) => c.group === ch.group));
+    const list = S.route.name === 'live' && S.liveList.includes(ch) ? S.liveList : (S.favs.has(ch.id) ? S.cat.channels.filter((c) => S.favs.has(c.id)) : S.cat.channels);
     const idx = Math.max(0, list.indexOf(ch));
-    const queue = list.slice(Math.max(0, idx - 200), idx + 200);
+    const queue = list.slice(Math.max(0, idx - 750), idx + 750);
+    if (!N) addHistory({ id: ch.id, kind: 'channel', title: ch.name, logo: ch.logo, url: ch.url, at: Date.now() });
     nativePlay({
-      live: true, title: ch.name, index: queue.indexOf(ch),
-      queue: queue.map((c) => { const nn = nowNext(c); return { title: `${c.num ? c.num + ' · ' : ''}${c.name}`, url: c.url, key: c.url, info: nn.now ? `Agora: ${nn.now[2]} (${hhmm(nn.now[0])}–${hhmm(nn.now[1])})` : c.group }; }),
+      live: true, kind: 'live', title: ch.name, index: queue.indexOf(ch),
+      queue: queue.map((c) => {
+        const nn = nowNext(c);
+        return { title: `${c.num ? c.num + ' · ' : ''}${c.name}`, url: c.url, key: c.url,
+          info: nn.now ? `Agora: ${nn.now[2]} (${hhmm(nn.now[0])}–${hhmm(nn.now[1])})` : c.group,
+          hist: { id: c.id, kind: 'channel', title: c.name, logo: c.logo } };
+      }),
     });
   }
   function addHistory(h) {
-    S.history = [h].concat(S.history.filter((x) => x.url !== h.url)).slice(0, 30);
+    S.history = [h].concat(S.history.filter((x) => x.id !== h.id)).slice(0, 60);
     store.set('history', S.history);
   }
   function playMovie(m) {
-    addHistory({ id: m.id, kind: 'movie', title: m.title || m.name, logo: m.logo, url: m.url, at: Date.now() });
-    nativePlay({ url: m.url, key: m.url, title: m.title || m.name, info: [m.year, m.lang].filter(Boolean).join(' · ') });
+    const hist = { id: m.id, kind: 'movie', title: m.title || m.name, logo: m.logo };
+    if (!N) addHistory(Object.assign({ url: m.url, at: Date.now() }, hist));
+    nativePlay({ kind: 'movie', url: m.url, key: m.url, title: m.title || m.name, info: [m.year, m.lang].filter(Boolean).join(' · '), hist });
   }
+  /** Fila com todos os episódios (todas as temporadas) para trocar dentro do player. */
   function playEpisode(s, season, i) {
-    const e = (s.seasons[season] || [])[i];
-    if (!e) return;
-    const t = `${s.title || s.name} · T${season}:E${e.ep}`;
-    addHistory({ id: s.id, kind: 'episode', title: t, logo: e.logo || s.logo, url: e.url, at: Date.now() });
-    nativePlay({ url: e.url, key: e.url, title: t, info: e.title });
+    const seasons = Object.keys(s.seasons || {}).sort((x, y) => x - y);
+    const queue = [];
+    let start = 0;
+    seasons.forEach((sn) => (s.seasons[sn] || []).forEach((e, j) => {
+      if (String(sn) === String(season) && j === i) start = queue.length;
+      const label = `T${sn}:E${e.ep}`;
+      queue.push({ title: `${label} · ${e.title}`, url: e.url, key: e.url, info: s.title || s.name,
+        hist: { id: s.id, kind: 'episode', sid: s.id, title: `${s.title || s.name} · ${label}`, logo: e.logo || s.logo } });
+    }));
+    if (!queue.length) return;
+    if (!N) addHistory(Object.assign({ url: queue[start].url, at: Date.now() }, queue[start].hist));
+    nativePlay({ kind: 'series', title: s.title || s.name, queue, index: start });
+  }
+  function resumeHistory(h) {
+    if (!h) return;
+    if (h.kind === 'channel') { const ch = S.byId.get(h.id); if (ch) return playChannel(ch); return nativePlay({ live: true, url: h.url, title: h.title }); }
+    if (h.kind === 'episode') {
+      const s = S.byId.get(h.sid || h.id);
+      if (s && s.seasons) {
+        for (const sn of Object.keys(s.seasons)) {
+          const j = s.seasons[sn].findIndex((e) => e.url === h.url);
+          if (j >= 0) return playEpisode(s, sn, j);
+        }
+      }
+      if (s && !s.seasons) return go('detail', { id: s.id });
+    }
+    if (h.kind === 'movie') { const m = S.byId.get(h.id); if (m) return playMovie(m); }
+    nativePlay({ url: h.url, key: h.url, title: h.title });
   }
 
   // ---------- sobreposição ----------
@@ -1014,9 +1076,13 @@
       if (it.kind === 'movie') playMovie(it);
       else go('detail', { id: d.id });
     },
-    resume: (d) => {
-      const h = S.history.find((x) => x.id === d.id && x.url) || S.history.find((x) => x.id === d.id);
-      if (h) nativePlay({ url: h.url, key: h.url, title: h.title });
+    resume: (d) => resumeHistory(histList().find((x) => x.id === d.id)),
+    forgetHist: (d) => {
+      if (N && N.forget) N.forget(d.id);
+      S.history = S.history.filter((x) => x.id !== d.id);
+      store.set('history', S.history);
+      toast('Removido de “Continuar assistindo”');
+      softRender();
     },
     playCh: (d) => { const ch = S.byId.get(d.id); if (ch) playChannel(ch); },
     playEp: (d) => { const s = S.byId.get(d.id); if (s) playEpisode(s, d.season, +d.i); },
@@ -1053,6 +1119,7 @@
     pickSub: () => pickFrom('Idioma da legenda', SUBS, 'subLang'),
     pickAudio: () => pickFrom('Áudio preferido', AUDIO, 'audioLang'),
     pickSize: () => pickFrom('Tamanho da legenda', SIZES, 'subSize'),
+    pickSkip: () => pickFrom('Pular abertura (séries)', SKIPS, 'skipIntro'),
     pickUa: () => {
       openSheet('Identificar o app como', UAS.map(([v, l]) => ({ label: l, value: v, on: (S.settings.ua || '') === v })), (o) => {
         S.settings.ua = o.value;
@@ -1269,7 +1336,7 @@
   window.NOIR = {
     back,
     onResume() {
-      if (S.route.name === 'home' || S.route.name === 'detail') softRender();
+      if (['home', 'detail', 'mine'].includes(S.route.name)) softRender();
     },
     onLanAdd(json) {
       let o;

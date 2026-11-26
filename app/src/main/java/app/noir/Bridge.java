@@ -71,6 +71,28 @@ public class Bridge {
         Net.setForced(ua);
     }
 
+    /** Histórico gravado pelo player (JSON array, mais recente primeiro). */
+    @JavascriptInterface
+    public String history() {
+        return act.getSharedPreferences("history", Context.MODE_PRIVATE).getString("list", "[]");
+    }
+
+    /** Remove um item do histórico (por id). */
+    @JavascriptInterface
+    public void forget(String id) {
+        SharedPreferences sp = act.getSharedPreferences("history", Context.MODE_PRIVATE);
+        try {
+            org.json.JSONArray old = new org.json.JSONArray(sp.getString("list", "[]"));
+            org.json.JSONArray out = new org.json.JSONArray();
+            for (int i = 0; i < old.length(); i++) {
+                org.json.JSONObject o = old.optJSONObject(i);
+                if (o != null && !id.equals(o.optString("id"))) out.put(o);
+            }
+            sp.edit().putString("list", out.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
     @JavascriptInterface
     public void toast(String msg) {
         act.runOnUiThread(() -> Toast.makeText(act, msg, Toast.LENGTH_SHORT).show());

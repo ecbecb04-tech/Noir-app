@@ -18,27 +18,125 @@
         android:layout_height="wrap_content"
         android:layout_gravity="top"
         android:background="@drawable/top_scrim"
-        android:orientation="vertical"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
         android:paddingStart="40dp"
         android:paddingTop="24dp"
-        android:paddingEnd="40dp"
+        android:paddingEnd="32dp"
         android:paddingBottom="48dp">
 
-        <TextView
-            android:id="@+id/title"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:textColor="#FFF5F5F7"
-            android:textSize="24sp"
-            android:textStyle="bold" />
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFBF6EF"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/subtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textColor="#FFDCD3CB"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/hint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="#FFFF8A3D"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/list_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="@drawable/pill"
+            android:focusable="false"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:textAllCaps="false"
+            android:textColor="#FF100D14"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/skip"
+        android:layout_width="wrap_content"
+        android:layout_height="52dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="40dp"
+        android:layout_marginBottom="120dp"
+        android:background="@drawable/pill"
+        android:paddingStart="28dp"
+        android:paddingEnd="28dp"
+        android:text="Pular abertura  »"
+        android:textAllCaps="false"
+        android:textColor="#FF100D14"
+        android:textSize="17sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/next"
+        android:layout_width="wrap_content"
+        android:layout_height="52dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="40dp"
+        android:layout_marginBottom="120dp"
+        android:background="@drawable/pill"
+        android:paddingStart="28dp"
+        android:paddingEnd="28dp"
+        android:text="Próximo episódio  ▶"
+        android:textAllCaps="false"
+        android:textColor="#FF100D14"
+        android:textSize="17sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/panel"
+        android:layout_width="400dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="@drawable/panel_bg"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingTop="24dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="16dp"
+        android:visibility="gone">
 
         <TextView
-            android:id="@+id/subtitle"
+            android:id="@+id/panel_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="#FFD4D4D8"
-            android:textSize="15sp" />
+            android:paddingStart="12dp"
+            android:paddingBottom="12dp"
+            android:textColor="#FFFBF6EF"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <ListView
+            android:id="@+id/panel_list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:choiceMode="singleChoice"
+            android:divider="@null"
+            android:dividerHeight="2dp"
+            android:listSelector="@drawable/list_sel"
+            android:scrollbars="vertical" />
     </LinearLayout>
 
     <TextView
@@ -46,10 +144,10 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:background="#CC0B0B0D"
+        android:background="#CC100D14"
         android:gravity="center"
         android:padding="24dp"
-        android:textColor="#FFF5F5F7"
+        android:textColor="#FFFBF6EF"
         android:textSize="18sp"
         android:visibility="gone" />
 </FrameLayout>
