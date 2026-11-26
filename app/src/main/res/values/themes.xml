@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Noir" parent="@android:style/Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@color/noir_bg</item>
+        <item name="android:colorAccent">@color/noir_accent</item>
+        <item name="android:statusBarColor">@color/noir_bg</item>
+        <item name="android:navigationBarColor">@color/noir_bg</item>
+    </style>
+    <style name="Theme.Noir.Player" parent="Theme.Noir">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

@@ -1,0 +1,1 @@
+# Minificação desativada (isMinifyEnabled = false).
