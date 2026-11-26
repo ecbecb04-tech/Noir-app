@@ -7,11 +7,11 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "app.noir"
+        applicationId = "app.gatoflix"
         minSdk = 23
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.1.0"
     }
 
     flavorDimensions += "device"
@@ -19,24 +19,24 @@ android {
         create("tv") {
             dimension = "device"
             applicationIdSuffix = ".tv"
-            resValue("string", "app_name", "NOIR TV")
+            resValue("string", "app_name", "Gatoflix TV")
         }
         create("mobile") {
             dimension = "device"
             applicationIdSuffix = ".mobile"
-            resValue("string", "app_name", "NOIR")
+            resValue("string", "app_name", "Gatoflix")
         }
     }
 
     // Assinatura: usa a chave do GitHub Secrets se existir; senão a chave de debug.
-    val ksFile = System.getenv("NOIR_KEYSTORE_FILE")
+    val ksFile = System.getenv("GATOFLIX_KEYSTORE_FILE")
     signingConfigs {
         if (ksFile != null && file(ksFile).exists()) {
             create("release") {
                 storeFile = file(ksFile)
-                storePassword = System.getenv("NOIR_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("NOIR_KEY_ALIAS")
-                keyPassword = System.getenv("NOIR_KEY_PASSWORD")
+                storePassword = System.getenv("GATOFLIX_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("GATOFLIX_KEY_ALIAS")
+                keyPassword = System.getenv("GATOFLIX_KEY_PASSWORD")
             }
         }
     }

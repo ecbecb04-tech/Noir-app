@@ -162,16 +162,16 @@ final class LanServer {
         s.close();
     }
 
-    private static final String CSS = "body{margin:0;background:#0B0B0D;color:#F5F5F7;font-family:system-ui,sans-serif;padding:24px}"
-            + "h1{font-size:26px;margin:0 0 6px}.b{color:#E5484D;font-weight:800;letter-spacing:2px}"
+    private static final String CSS = "body{margin:0;background:#100D14;color:#FBF6EF;font-family:system-ui,sans-serif;padding:24px}"
+            + "h1{font-size:26px;margin:0 0 6px}.b{color:#FF8A3D;font-weight:800;font-size:22px}"
             + "label{display:block;margin:16px 0 6px;color:#A1A1AA;font-size:14px}"
-            + "input,select{width:100%;box-sizing:border-box;height:48px;border-radius:10px;border:1px solid #3F3F46;background:#17171B;color:#F5F5F7;font-size:16px;padding:0 12px}"
-            + "button{margin-top:24px;width:100%;height:52px;border:0;border-radius:10px;background:#E5484D;color:#fff;font-size:17px;font-weight:700}"
+            + "input,select{width:100%;box-sizing:border-box;height:48px;border-radius:10px;border:1px solid #3F3F46;background:#1C1723;color:#FBF6EF;font-size:16px;padding:0 12px}"
+            + "button{margin-top:24px;width:100%;height:52px;border:0;border-radius:10px;background:#FF8A3D;color:#fff;font-size:17px;font-weight:700}"
             + ".x{display:none}p{color:#A1A1AA;line-height:1.5}";
 
     private static String page(String title, String body) {
         return "<!doctype html><html lang=pt-BR><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-                + "<title>NOIR</title><style>" + CSS + "</style></head><body><div class=b>NOIR</div><h1>" + title + "</h1>" + body + "</body></html>";
+                + "<title>Gatoflix</title><style>" + CSS + "</style></head><body><div class=b>gatoflix</div><h1>" + title + "</h1>" + body + "</body></html>";
     }
 
     private String form() {

@@ -1,4 +1,4 @@
-/* NOIR — dados: listas M3U/VOD/Xtream, guia EPG, IMDb (OMDb) e novidades (TMDB). */
+/* GATOFLIX — dados: listas M3U/VOD/Xtream, guia EPG, IMDb (OMDb) e novidades (TMDB). */
 'use strict';
 (function (root) {
   const N = root.NoirNative || null;

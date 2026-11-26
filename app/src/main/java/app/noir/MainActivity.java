@@ -41,7 +41,7 @@ public class MainActivity extends Activity {
         Net.init(this);
 
         web = new WebView(this);
-        web.setBackgroundColor(0xFF0B0B0D);
+        web.setBackgroundColor(0xFF100D14);
         web.setFocusable(true);
         web.setFocusableInTouchMode(true);
         setContentView(web);
@@ -56,7 +56,7 @@ public class MainActivity extends Activity {
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
         s.setTextZoom(100);
-        s.setUserAgentString(s.getUserAgentString() + " NoirApp/" + BuildConfig.VERSION_NAME);
+        s.setUserAgentString(s.getUserAgentString() + " GatoflixApp/" + BuildConfig.VERSION_NAME);
 
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))

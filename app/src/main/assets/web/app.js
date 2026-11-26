@@ -1,4 +1,4 @@
-/* NOIR — interface (TV e celular). */
+/* GATOFLIX — interface (TV e celular). */
 'use strict';
 (function () {
   const D = window.NoirData;
@@ -50,6 +50,11 @@
   const PAL = [['#14303A', '#E8A23A'], ['#3A1D2E', '#C2557A'], ['#1C2B3F', '#5B8DD6'], ['#3D2A14', '#D9893B'],
     ['#1E3324', '#58A06C'], ['#2A2140', '#8B6FD6'], ['#3B1A1A', '#D65B5B'], ['#173236', '#4FB3B3']];
   const pal = (s) => PAL[parseInt(D.hash(s || 'x'), 36) % PAL.length];
+
+  // Logo: carinha de gato (laranja malhado, orelhas e focinho rosa).
+  const CAT = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FF8A3D" d="M8.5 21 6 4.5l12.2 7.6q5.8-2 11.6 0L42 4.5 39.5 21q4.5 9-1.2 16.6Q32.4 44 24 44t-14.3-6.4Q4 30 8.5 21z"/><path fill="#FF6FA3" d="M10.6 15.6 9.4 8.8l5.8 3.9zM37.4 15.6l1.2-6.8-5.8 3.9z"/><path fill="#E5702A" d="M24 12.4v5.2M20.5 12.8l1 4.2M27.5 12.8l-1 4.2" stroke="#E5702A" stroke-width="1.6" stroke-linecap="round"/><ellipse cx="17" cy="26" rx="2.7" ry="3.5" fill="#100D14"/><ellipse cx="31" cy="26" rx="2.7" ry="3.5" fill="#100D14"/><circle cx="17.9" cy="24.7" r=".9" fill="#fff"/><circle cx="31.9" cy="24.7" r=".9" fill="#fff"/><path fill="#FF6FA3" d="M21.8 30.4h4.4L24 33z"/><path d="M24 33q-1.6 2.6-3.8 1.2M24 33q1.6 2.6 3.8 1.2" fill="none" stroke="#100D14" stroke-width="1.3" stroke-linecap="round"/><path d="M13.5 31.5 4 30M13.8 34 5 36.5M34.5 31.5 44 30M34.2 34 43 36.5" stroke="#FFE9D2" stroke-width="1.1" stroke-linecap="round" opacity=".85"/></svg>';
+  const LOGO = (cls) => `<div class="logo brand ${cls || ''}" role="img" aria-label="Gatoflix"><span class="ear">G</span>ATOFLIX</div>`;
+  const PAW = '<svg class="paw" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><ellipse cx="12" cy="16.2" rx="5" ry="4.2"/><ellipse cx="5.6" cy="10.4" rx="2.1" ry="2.7"/><ellipse cx="9.6" cy="6.6" rx="2.1" ry="2.8"/><ellipse cx="14.4" cy="6.6" rx="2.1" ry="2.8"/><ellipse cx="18.4" cy="10.4" rx="2.1" ry="2.7"/></svg>';
 
   const P = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
   const I = {
@@ -280,7 +285,7 @@
   ];
   const TOP = { home: 'home', news: 'news', live: 'live', movies: 'movies', series: 'series', search: 'search', settings: 'settings', add: 'settings', addform: 'settings', detail: null };
   function renderNav() {
-    $('#nav').innerHTML = `<div class="logo bebas">NOIR</div>` + NAV.map((n) =>
+    $('#nav').innerHTML = LOGO() + NAV.map((n) =>
       `<button class="ni f ${n.tvOnly ? 'tvonly' : ''}" data-act="nav" data-r="${n.r}" data-k="nav:${n.r}">${I[n.ic]}<span>${n.label}</span></button>`).join('');
   }
   function updateNav() {
@@ -352,8 +357,8 @@
   const SCREENS = {};
 
   function emptyLists() {
-    return `<div class="empty">${TV ? '' : '<div class="bebas" style="font-size:3.2rem;color:var(--ac)">NOIR</div>'}
-      <h1>Bem-vindo ao NOIR</h1>
+    return `<div class="empty"><div class="cat">${CAT}</div>
+      <h1>Miau! Bem-vindo ao Gatoflix</h1>
       <p>Adicione sua lista de canais, filmes e séries (M3U, Xtream Codes ou guia EPG) para começar. Nada é enviado para fora do seu aparelho.</p>
       <button class="btn pri f" data-act="go" data-r="add" data-autofocus>${I.plus}Adicionar lista</button></div>`;
   }
@@ -366,7 +371,7 @@
     return src[dayN % src.length];
   }
   function mobileTop() {
-    return `<div class="mtop"><div class="r1"><span class="logo bebas">NOIR</span><div style="display:flex">
+    return `<div class="mtop"><div class="r1">${LOGO()}<div style="display:flex">
       <button class="ib f" data-act="go" data-r="search" aria-label="Buscar">${I.search}</button>
       <button class="ib f" data-act="go" data-r="news" aria-label="Novidades">${I.sparkle}</button></div></div>
       <div class="r2"><a href="#" class="f" data-act="nav" data-r="series">Séries</a><a href="#" class="f" data-act="nav" data-r="movies">Filmes</a><a href="#" class="f" data-act="nav" data-r="live">TV ao vivo</a></div></div>`;
@@ -377,7 +382,7 @@
     const plot = it.plot || c.plot || '';
     return `<section class="hero" data-hero="${it.id}"><div class="bg">${heroBg(it)}</div><div class="scrim"></div>
       ${TV ? '' : mobileTop()}
-      <div class="info"><span class="kicker">${esc(kicker)}</span><h1>${esc(it.title || it.name)}</h1>${metaLine(it)}
+      <div class="info"><span class="kicker">${PAW}${esc(kicker)}</span><h1>${esc(it.title || it.name)}</h1>${metaLine(it)}
       ${plot ? `<p>${esc(plot)}</p>` : ''}
       ${withActs ? `<div class="acts"><button class="btn pri f" data-act="playItem" data-id="${it.id}" data-k="hero:play">${I.play}Assistir</button>
       <button class="btn f" data-act="open" data-id="${it.id}" data-k="hero:info">${TV ? I.info + 'Mais informações' : I.plus + 'Detalhes'}</button></div>` : ''}</div></section>`;
@@ -395,11 +400,11 @@
   SCREENS.home = () => {
     if (!S.lists.length) return emptyLists();
     const any = S.cat.channels.length + S.cat.movies.length + S.cat.series.length;
-    if (!any) return S.loading || S.lists.some((l) => !l.updatedAt && !l.error) ? spinner('Carregando suas listas…')
+    if (!any) return S.loading || S.lists.some((l) => !l.updatedAt && !l.error) ? spinner('O gato está buscando suas listas…')
       : `<div class="empty"><h1>Nenhum conteúdo</h1><p>As listas não trouxeram itens. Confira os links em Configurações.</p><button class="btn pri f" data-act="nav" data-r="settings">${I.gear}Configurações</button></div>`;
     if (!S.featured) S.featured = pickFeatured('movies') || pickFeatured('series');
     const f = S.featured;
-    let h = heroHtml(f, 'DESTAQUE DA SEMANA', true);
+    let h = heroHtml(f, 'ESCOLHA DO GATO', true);
     const rows = [];
     const cont = continueItems();
     if (cont.length) rows.push(row('Continuar assistindo', '', cont.map((x) => landCard(x, 'cont', { act: 'resume', bar: x.pct })).join('')));
@@ -650,7 +655,7 @@
     if (!S.q) return `<h1>${TV ? 'Digite para buscar' : ''}</h1><p class="mu" style="font-size:${TV ? '2.2rem' : '1.3rem'};margin:0">Filmes, séries e canais das suas listas.</p>`;
     const total = vod.length + r.ch.length;
     let h = `<h1>Resultados para “${esc(S.q)}”</h1>`;
-    if (!total) return h + `<p class="mu" style="font-size:${TV ? '2.2rem' : '1.3rem'};margin:0">Nada encontrado.</p>`;
+    if (!total) return h + `<p class="mu" style="font-size:${TV ? '2.2rem' : '1.3rem'};margin:0">Nada por aqui… nem o gato achou.</p>`;
     if (vod.length) h += `<div class="sgrid">${vod.slice(0, TV ? 9 : 40).map((x) => `<div class="cap">${landCard(x, 'sr', { right: `<span class="dark">${x.kind === 'series' ? 'SÉRIE' : 'FILME'}</span>` })}<span class="ct">${esc(x.title || x.name)}</span></div>`).join('')}</div>`;
     if (r.ch.length) h += `<span class="lbl">CANAIS</span><div class="track" style="padding:0;gap:${TV ? '2.4rem' : '.8rem'}">${r.ch.slice(0, 12).map((c) => chCard(c, 'sch')).join('')}</div>`;
     return h;
@@ -735,7 +740,7 @@
     about: () => `<h2>Sobre</h2><div class="panel">
       <button class="prow f" data-act="clearImdb" data-k="ab:imdb"><span>Limpar cache de notas IMDb</span><span class="v">›</span></button>
       <button class="prow f" data-act="clearNews" data-k="ab:news"><span>Recarregar novidades</span><span class="v">›</span></button></div>
-      <p class="ver">NOIR ${N ? 'v' + esc(N.version()) : '(navegador)'} · ${TV ? 'Android TV' : 'Celular'}</p>`,
+      <p class="ver">Gatoflix ${N ? 'v' + esc(N.version()) : '(navegador)'} · ${TV ? 'Android TV' : 'Celular'}</p>`,
   };
   const CFG_CATS = [['lists', 'Listas de conteúdo'], ['play', 'Reprodução e legendas'], ['show', 'Exibição'], ['keys', 'Chaves de API'], ['about', 'Sobre']];
   SCREENS.settings = (p) => {
@@ -923,7 +928,7 @@
     saveLists();
     S.add = null;
     rebuild();
-    toast(`Lista “${l.name}” importada`);
+    toast(`Miau! Lista “${l.name}” importada`);
     if (N) N.stopLan();
     S.stack = [];
     S.route = { name: 'home', params: {} };

@@ -1,11 +1,11 @@
-# NOIR — app de TV e streaming (Android TV + celular)
+# Gatoflix — app de TV e streaming (Android TV + celular)
 
 Um código, dois APKs:
 
 | APK | Para | Pacote |
 |---|---|---|
-| `NOIR-AndroidTV.apk` | Android TV, Google TV, TV Box, Fire TV | `app.noir.tv` |
-| `NOIR-Celular.apk` | Celulares e tablets Android 6+ | `app.noir.mobile` |
+| `Gatoflix-AndroidTV.apk` | Android TV, Google TV, TV Box, Fire TV | `app.gatoflix.tv` |
+| `Gatoflix-Celular.apk` | Celulares e tablets Android 6+ | `app.gatoflix.mobile` |
 
 ## O que o app faz
 
@@ -23,7 +23,7 @@ As chaves são informadas em **Configurações › Chaves de API** e ficam salva
 ### Opção 1 — GitHub (sem instalar nada)
 1. Crie um repositório no GitHub e envie esta pasta.
 2. Abra a aba **Actions** → **Gerar APKs** (roda sozinho a cada envio, ou clique em *Run workflow*).
-3. Ao terminar, baixe o artefato **NOIR-apks** (contém os dois `.apk`).
+3. Ao terminar, baixe o artefato **Gatoflix-apks** (contém os dois `.apk`).
 4. Para publicar uma versão: crie uma tag `v1.0.0`. Os APKs aparecem em **Releases**.
 
 ### Opção 2 — Android Studio
@@ -34,15 +34,15 @@ Pela linha de comando: `./gradlew assembleTvRelease assembleMobileRelease`.
 Sem configuração, os APKs saem assinados com a chave de depuração do computador/servidor que compilou. Como essa chave muda entre compilações no GitHub, uma nova versão pode exigir desinstalar a anterior. Para uma chave fixa:
 
 ```bash
-keytool -genkeypair -v -keystore noir.jks -alias noir -keyalg RSA -keysize 2048 -validity 10000
-base64 -w0 noir.jks   # copie a saída
+keytool -genkeypair -v -keystore gatoflix.jks -alias gatoflix -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 gatoflix.jks   # copie a saída
 ```
 
-No GitHub: *Settings › Secrets and variables › Actions* → crie `NOIR_KEYSTORE_BASE64`, `NOIR_KEYSTORE_PASSWORD`, `NOIR_KEY_ALIAS` (`noir`) e `NOIR_KEY_PASSWORD`. Guarde o `noir.jks` em local seguro e nunca o envie ao repositório.
+No GitHub: *Settings › Secrets and variables › Actions* → crie `GATOFLIX_KEYSTORE_BASE64`, `GATOFLIX_KEYSTORE_PASSWORD`, `GATOFLIX_KEY_ALIAS` (`gatoflix`) e `GATOFLIX_KEY_PASSWORD`. Guarde o `gatoflix.jks` em local seguro e nunca o envie ao repositório.
 
 ## Instalar
 
-- **Android TV / TV Box**: instale o app *Downloader* (ou use um pendrive), abra o link do APK e permita "instalar apps desconhecidos" para ele. Alternativa: `adb install NOIR-AndroidTV.apk`.
+- **Android TV / TV Box**: instale o app *Downloader* (ou use um pendrive), abra o link do APK e permita "instalar apps desconhecidos" para ele. Alternativa: `adb install Gatoflix-AndroidTV.apk`.
 - **Celular**: abra o `.apk` no gerenciador de arquivos e autorize a instalação.
 
 ## Estrutura
