@@ -38,6 +38,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        Net.init(this);
 
         web = new WebView(this);
         web.setBackgroundColor(0xFF0B0B0D);

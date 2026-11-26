@@ -65,6 +65,12 @@ public class Bridge {
         return v == null ? "" : v;
     }
 
+    /** "" = automático; senão a identificação (User-Agent) escolhida pelo usuário. */
+    @JavascriptInterface
+    public void setUserAgent(String ua) {
+        Net.setForced(ua);
+    }
+
     @JavascriptInterface
     public void toast(String msg) {
         act.runOnUiThread(() -> Toast.makeText(act, msg, Toast.LENGTH_SHORT).show());

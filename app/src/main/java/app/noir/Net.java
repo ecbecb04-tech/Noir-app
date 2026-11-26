@@ -1,5 +1,8 @@
 package app.noir;
 
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.net.Uri;
 import android.util.Xml;
 import android.webkit.WebResourceResponse;
 
@@ -25,8 +28,59 @@ import java.util.zip.GZIPInputStream;
 /** Rede: download de listas/APIs para a interface e conversão do guia XMLTV. */
 final class Net {
 
-    /** Muitos servidores IPTV só respondem a players conhecidos. */
-    static final String UA = "VLC/3.0.20 LibVLC/3.0.20";
+    /**
+     * Muitos servidores IPTV só respondem a players conhecidos. O app tenta estas
+     * identificações em ordem e lembra, por servidor, a primeira que funcionou.
+     */
+    static final String[] UAS = {
+            "VLC/3.0.20 LibVLC/3.0.20",
+            "IPTVSmartersPlayer",
+            "TiviMate/5.1.6 (Android 11)",
+            "okhttp/4.12.0",
+            "Dalvik/2.1.0 (Linux; U; Android 11; Android TV Build/RP1A)",
+            "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
+    };
+    static final String UA = UAS[0];
+
+    /** Identificação escolhida em Configurações ("" = automático). */
+    static volatile String forcedUa = "";
+    private static SharedPreferences prefs;
+
+    static synchronized void init(Context c) {
+        if (prefs == null) prefs = c.getApplicationContext().getSharedPreferences("ua", Context.MODE_PRIVATE);
+        if (forcedUa.isEmpty()) forcedUa = prefs.getString("__forced", "");
+    }
+
+    static void setForced(String ua) {
+        forcedUa = ua == null ? "" : ua.trim();
+        if (prefs != null) prefs.edit().putString("__forced", forcedUa).apply();
+    }
+
+    private static String host(String url) {
+        try {
+            Uri u = Uri.parse(url);
+            return u.getHost() + ":" + u.getPort();
+        } catch (Exception e) {
+            return url;
+        }
+    }
+
+    /** Identificação a usar para esta URL (a escolhida, a que funcionou antes, ou VLC). */
+    static String uaFor(String url) {
+        if (!forcedUa.isEmpty()) return forcedUa;
+        String v = prefs == null ? null : prefs.getString(host(url), null);
+        return v == null ? UAS[0] : v;
+    }
+
+    private static void remember(String url, String ua) {
+        if (prefs != null) prefs.edit().putString(host(url), ua).apply();
+    }
+
+    /** Códigos que costumam significar "player não autorizado". */
+    private static boolean refused(int code) {
+        return code == 401 || code == 403 || code == 404 || code == 405 || code == 406 || code == 429
+                || code == 451 || code == 456 || code == 458 || code == 502 || code == 503 || code == 512 || code == 884;
+    }
 
     private Net() {}
 
@@ -69,16 +123,46 @@ final class Net {
         }
     }
 
+    /** Abre a URL tentando outras identificações se o servidor recusar. */
     static HttpURLConnection open(String url) throws IOException {
+        if (!forcedUa.isEmpty()) return openWith(url, forcedUa);
+        String first = uaFor(url);
+        java.util.List<String> order = new ArrayList<>();
+        order.add(first);
+        for (String u : UAS) if (!u.equals(first)) order.add(u);
+        HttpURLConnection lastRefused = null;
+        IOException lastError = null;
+        for (String ua : order) {
+            try {
+                HttpURLConnection c = openWith(url, ua);
+                int code = c.getResponseCode();
+                if (code < 400) {
+                    remember(url, ua);
+                    if (lastRefused != null) lastRefused.disconnect();
+                    return c;
+                }
+                if (!refused(code)) return c;
+                if (lastRefused != null) lastRefused.disconnect();
+                lastRefused = c;
+            } catch (IOException e) {
+                lastError = e;
+            }
+        }
+        if (lastRefused != null) return lastRefused;
+        throw lastError != null ? lastError : new IOException("sem resposta");
+    }
+
+    static HttpURLConnection openWith(String url, String ua) throws IOException {
         String current = url;
         for (int i = 0; i < 6; i++) {
             HttpURLConnection c = (HttpURLConnection) new URL(current).openConnection();
             c.setInstanceFollowRedirects(false);
             c.setConnectTimeout(15000);
             c.setReadTimeout(60000);
-            c.setRequestProperty("User-Agent", UA);
+            c.setRequestProperty("User-Agent", ua);
             c.setRequestProperty("Accept", "*/*");
             c.setRequestProperty("Accept-Encoding", "gzip");
+            c.setRequestProperty("Connection", "close");
             int code = c.getResponseCode();
             if (code >= 300 && code < 400 && c.getHeaderField("Location") != null) {
                 current = new URL(new URL(current), c.getHeaderField("Location")).toString();

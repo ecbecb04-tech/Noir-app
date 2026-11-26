@@ -79,7 +79,7 @@
   // ---------- estado ----------
   const S = {
     lists: store.get('lists', []),
-    settings: Object.assign({ omdbKey: '', tmdbKey: '', subLang: 'pt', audioLang: '', subSize: 'M', showImdb: true, autoUpdate: true, hideAdult: true },
+    settings: Object.assign({ omdbKey: '', tmdbKey: '', ua: '', subLang: 'pt', audioLang: '', subSize: 'M', showImdb: true, autoUpdate: true, hideAdult: true },
       store.get('settings', {})),
     favs: new Set(store.get('favs', [])),
     history: store.get('history', []),
@@ -686,6 +686,10 @@
   const SUBS = [['pt', 'Português'], ['en', 'Inglês'], ['es', 'Espanhol'], ['off', 'Desligadas']];
   const AUDIO = [['', 'Original'], ['pt', 'Português (dublado)'], ['en', 'Inglês']];
   const SIZES = [['P', 'Pequeno'], ['M', 'Médio'], ['G', 'Grande']];
+  const UAS = [['', 'Automático (recomendado)'], ['VLC/3.0.20 LibVLC/3.0.20', 'VLC'], ['IPTVSmartersPlayer', 'IPTV Smarters'],
+    ['TiviMate/5.1.6 (Android 11)', 'TiviMate'], ['okhttp/4.12.0', 'Android (okhttp)'],
+    ['Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36', 'Navegador']];
+  const applyUa = () => { if (N && N.setUserAgent) N.setUserAgent(S.settings.ua || ''); };
   const lab = (arr, v) => (arr.find((x) => x[0] === v) || arr[0])[1];
   function listCard(l) {
     const c = l.counts || {};
@@ -718,7 +722,9 @@
     play: () => `<h2>Reprodução e legendas</h2><div class="panel">
       ${prow('Idioma da legenda', lab(SUBS, S.settings.subLang), 'pickSub', 'p:sub')}
       ${prow('Áudio preferido', lab(AUDIO, S.settings.audioLang), 'pickAudio', 'p:aud')}
-      ${prow('Tamanho da legenda', lab(SIZES, S.settings.subSize), 'pickSize', 'p:size')}</div>
+      ${prow('Tamanho da legenda', lab(SIZES, S.settings.subSize), 'pickSize', 'p:size')}
+      ${prow('Identificar o app como', lab(UAS, S.settings.ua || ''), 'pickUa', 'p:ua')}</div>
+      <p class="hint">Alguns servidores só aceitam players conhecidos. No modo automático o app testa VLC, IPTV Smarters, TiviMate e outros até o servidor aceitar.</p>
       <p class="hint">Durante o vídeo, use o botão de legendas e o de configurações do player para trocar faixas de áudio e legenda.</p>`,
     show: () => `<h2>Exibição</h2><div class="panel">${toggle('Mostrar notas IMDb', 'showImdb')}${toggle('Atualizar listas automaticamente', 'autoUpdate')}${toggle('Ocultar conteúdo adulto', 'hideAdult')}</div>`,
     keys: () => `<h2>Chaves de API</h2>
@@ -835,9 +841,26 @@
   function readForm(type) {
     const v = (id) => { const el = $('#' + id); return el ? el.value.trim() : ''; };
     const l = { type, name: v('fName') };
-    if (type === 'xtream') Object.assign(l, { server: v('fServer'), user: v('fUser'), pass: v('fPass') });
-    else if (S.add && S.add.fileText != null && S.add.key === type) Object.assign(l, { url: 'file:', fileText: S.add.fileText });
-    else Object.assign(l, { url: v('fUrl'), epg: v('fEpg') });
+    if (type === 'xtream') {
+      Object.assign(l, { server: v('fServer'), user: v('fUser'), pass: v('fPass') });
+      // aceita o link completo (get.php / player_api.php?username=…&password=…) no campo Servidor
+      try {
+        const u = new URL(l.server);
+        if (u.searchParams.get('username')) {
+          l.user = l.user || u.searchParams.get('username');
+          l.pass = l.pass || u.searchParams.get('password') || '';
+          l.server = u.origin;
+        }
+      } catch (e) { /* campo inválido: testList avisa */ }
+    } else if (type === 'm3u' && /\/player_api\.php/i.test(v('fUrl'))) {
+      // link de API Xtream colado como M3U: converte para a lista M3U completa
+      try {
+        const u = new URL(v('fUrl'));
+        Object.assign(l, { url: `${u.origin}/get.php?username=${encodeURIComponent(u.searchParams.get('username') || '')}&password=${encodeURIComponent(u.searchParams.get('password') || '')}&type=m3u_plus&output=ts`, epg: v('fEpg') });
+      } catch (e) { Object.assign(l, { url: v('fUrl'), epg: v('fEpg') }); }
+    }
+    if (l.url) { /* já definido acima */ } else if (S.add && S.add.fileText != null && S.add.key === type) Object.assign(l, { url: 'file:', fileText: S.add.fileText });
+    else if (type !== 'xtream') Object.assign(l, { url: v('fUrl'), epg: v('fEpg') });
     if (!l.name) l.name = l.url === 'file:' ? (S.add.fileName || 'Arquivo') : (type === 'xtream' ? 'Xtream' : TYPE_LABEL[type]);
     return l;
   }
@@ -1025,6 +1048,14 @@
     pickSub: () => pickFrom('Idioma da legenda', SUBS, 'subLang'),
     pickAudio: () => pickFrom('Áudio preferido', AUDIO, 'audioLang'),
     pickSize: () => pickFrom('Tamanho da legenda', SIZES, 'subSize'),
+    pickUa: () => {
+      openSheet('Identificar o app como', UAS.map(([v, l]) => ({ label: l, value: v, on: (S.settings.ua || '') === v })), (o) => {
+        S.settings.ua = o.value;
+        saveSettings();
+        applyUa();
+        softRender();
+      });
+    },
     saveKeys: () => {
       const o = $('#kOmdb'), t = $('#kTmdb');
       const changedTmdb = t && t.value.trim() !== S.settings.tmdbKey;
@@ -1248,6 +1279,7 @@
 
   // ---------- início ----------
   async function boot() {
+    applyUa();
     renderNav();
     S.loading = S.lists.length > 0;
     render();

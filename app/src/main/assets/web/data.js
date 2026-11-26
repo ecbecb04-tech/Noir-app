@@ -14,7 +14,12 @@
     const target = N ? '/proxy?u=' + enc(url) : url;
     const r = await fetch(target);
     const t = await r.text();
-    if (!r.ok) throw new Error(t.slice(0, 160) || ('HTTP ' + r.status));
+    if (!r.ok) {
+      if ([401, 403, 404, 405, 406, 451, 456, 458, 884].includes(r.status)) {
+        throw new Error(`O servidor recusou o acesso (HTTP ${r.status}). Confira o link e, se funcionar em outro app, troque em Configurações › Reprodução › Identificar o app como.`);
+      }
+      throw new Error((t.slice(0, 160) || '') + ` (HTTP ${r.status})`);
+    }
     return t;
   }
   async function fetchJSON(url) {

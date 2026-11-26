@@ -77,8 +77,11 @@ public class PlayerActivity extends Activity {
         index = payload.optInt("index", 0);
         live = payload.optBoolean("live", false);
 
+        Net.init(this);
+        String firstUrl = payload.optString("url", "");
+        if (queue != null && queue.length() > 0) firstUrl = queue.optJSONObject(Math.max(0, Math.min(index, queue.length() - 1))).optString("url", firstUrl);
         DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
-                .setUserAgent(Net.UA)
+                .setUserAgent(Net.uaFor(firstUrl))
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15000)
                 .setReadTimeoutMs(30000);
