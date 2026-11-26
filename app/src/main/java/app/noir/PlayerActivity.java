@@ -159,7 +159,10 @@ public class PlayerActivity extends Activity {
 
         view.setPlayer(player);
         view.setShowSubtitleButton(true);
-        view.setControllerShowTimeoutMs(4000);
+        // Controles somem sozinhos e não reaparecem a cada troca de canal/carregamento.
+        view.setControllerAutoShow(false);
+        view.setControllerHideOnTouch(true);
+        view.setControllerShowTimeoutMs(3000);
         view.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener) visibility -> {
             if (!panelOpen()) infoBar.setVisibility(visibility);
             handler.removeCallbacks(hideInfo);
@@ -178,6 +181,14 @@ public class PlayerActivity extends Activity {
                 loadFromQueue(pos);
             });
             hint.setText(live ? "◀ lista de canais  ·  ▲▼ trocar canal" : "◀ lista de episódios");
+            // Na TV: com os controles visíveis, ▲ leva até o botão; OK abre a lista.
+            listBtn.setOnKeyListener((v, keyCode, ev) -> {
+                if (ev.getAction() == KeyEvent.ACTION_DOWN && (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
+                    openPanel();
+                    return true;
+                }
+                return false;
+            });
         } else {
             hint.setVisibility(View.GONE);
         }
@@ -334,6 +345,7 @@ public class PlayerActivity extends Activity {
         }
         player.prepare();
         player.setPlayWhenReady(true);
+        view.hideController();
         recordHistory(item, url);
         showInfo();
     }
@@ -385,6 +397,21 @@ public class PlayerActivity extends Activity {
         }
         boolean controllerUp = view.isControllerFullyVisible();
         boolean hasList = queue != null && queue.length() > 1;
+        if (controllerUp && hasList && k == KeyEvent.KEYCODE_MENU) {
+            openPanel();
+            return true;
+        }
+        if (controllerUp && hasList && k == KeyEvent.KEYCODE_DPAD_UP && !listBtn.hasFocus()) {
+            // Sobe pelos controles; se já estiver na linha de cima, vai para o botão Canais/Episódios.
+            View before = getCurrentFocus();
+            super.dispatchKeyEvent(e);
+            View after = getCurrentFocus();
+            if (after == null || after == before || !isDescendant(view, after)) {
+                infoBar.setVisibility(View.VISIBLE);
+                listBtn.requestFocus();
+            }
+            return true;
+        }
         if (!controllerUp) {
             // Botões "Pular abertura" / "Próximo episódio" respondem ao OK do controle.
             if (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER) {
@@ -407,6 +434,15 @@ public class PlayerActivity extends Activity {
             }
         }
         return super.dispatchKeyEvent(e);
+    }
+
+    private static boolean isDescendant(View parent, View child) {
+        android.view.ViewParent p = child.getParent();
+        while (p != null) {
+            if (p == parent) return true;
+            p = p.getParent();
+        }
+        return false;
     }
 
     @Override

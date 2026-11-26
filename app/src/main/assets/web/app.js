@@ -241,6 +241,10 @@
     return '<span class="art1"></span>';
   }
   function posterCard(it, rk, extra) {
+    if (!TV) return `<div class="pwrap">${posterBtn(it, rk, extra)}<span class="pcap">${esc(it.title || it.name)}</span></div>`;
+    return posterBtn(it, rk, extra);
+  }
+  function posterBtn(it, rk, extra) {
     return `<button class="card poster f" data-act="open" data-id="${it.id}" data-k="${rk}:${it.id}" data-iq="${it.id}" data-hover="hero" aria-label="${esc(it.title || it.name)}">`
       + art(it) + `<div class="bdg">${imdbBadge(it)}</div>${it.lang ? `<div class="bdg r"><span class="dark">${it.lang}</span></div>` : ''}${extra || ''}</button>`;
   }
@@ -313,7 +317,11 @@
       return true;
     }
     if (S.route.name !== 'home') { S.route = { name: 'home', params: {} }; render(); return true; }
-    return false;
+    // Evita sair sem querer: na tela inicial, é preciso apertar "voltar" duas vezes.
+    if (Date.now() - (S.lastBack || 0) < 2500) return false;
+    S.lastBack = Date.now();
+    toast('Aperte voltar de novo para sair');
+    return true;
   }
   const focusKey = () => { const a = document.activeElement; return a && a.dataset ? a.dataset.k || '' : ''; };
 
@@ -422,7 +430,7 @@
     if (myList.length) rows.push(row('Minha lista', '', myList.map((x) => posterCard(x, 'my')).join('')));
     if (S.settings.tmdbKey && S.news && S.news.recent.length) {
       rows.push(row('Novidades nos streamings', '', S.news.recent.slice(0, 16).map((x) => landCard(x, 'hnews', {
-        img: x.backdrop || x.logo, badge: '<span class="livebadge">NOVO</span>', right: `<span class="dark">${esc(x.svc)}</span>`,
+        img: x.backdrop || x.logo, right: `<span class="dark">${esc(x.svc)}</span>`,
       })).join('') + (TV ? '' : '')));
     }
     const recentMovies = recentOf(S.cat.movies).slice(0, 30);
@@ -523,7 +531,7 @@
       <button class="tx f" data-act="playCh" data-id="${ch.id}" style="border:0;background:none;color:inherit;text-align:left;padding:0">
       <span class="t1"><span>${esc(nn.now ? nn.now[2] : ch.name)}</span></span>
       ${nn.now ? `<div class="bar"><i style="width:${nn.pct}%"></i></div>` : ''}
-      <span class="t2">${esc(ch.name)}${nn.next ? ' · A seguir: ' + esc(nn.next[2]) : ''}</span></button>
+      <span class="t2">${nn.now ? esc(ch.name) + (nn.next ? ' · A seguir: ' + esc(nn.next[2]) : '') : esc(ch.group)}</span></button>
       <button class="star f ${fav ? 'on' : ''}" data-act="fav" data-id="${ch.id}" aria-label="Favoritar canal">${fav ? I.starF : I.star}</button></div>`;
   }
 
