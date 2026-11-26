@@ -163,12 +163,14 @@
         year: yearOf(s.name || '') || String(s.year || ''), logo: s.stream_icon || '', group: vc[s.category_id] || 'Filmes',
         url: `${base}/movie/${u}/${p}/${s.stream_id}.${s.container_extension || 'mp4'}`,
         lang: langOf((s.name || '') + ' ' + (vc[s.category_id] || '')), added: (+s.added || 0) * 1000, list: id,
+        rating: parseFloat(s.rating) || 0,
       })),
       series: ser.map((s) => ({
         id: 'x' + hash(id + 's' + s.series_id), kind: 'series', name: s.name || 'Série', title: cleanTitle(s.name || ''),
         year: String(s.releaseDate || s.release_date || '').slice(0, 4) || yearOf(s.name || ''), logo: s.cover || '',
         group: sc[s.category_id] || 'Séries', plot: s.plot || '', lang: langOf((s.name || '') + ' ' + (sc[s.category_id] || '')),
         added: (+s.last_modified || 0) * 1000, xt: { seriesId: s.series_id }, seasons: null, list: id,
+        rating: parseFloat(s.rating) || 0,
       })),
       epgUrl: list.epg || `${base}/xmltv.php?username=${u}&password=${p}`,
     };
@@ -243,7 +245,12 @@
   const imdbQueue = [];
   let imdbActive = 0;
   const imdbWaiters = new Map();
-  function imdbKey(item) { return norm(item.original || item.title || item.name) + '|' + (item.year || ''); }
+  function imdbKey(item) {
+    if (item._ik) return item._ik;
+    const k = norm(item.original || item.title || item.name) + '|' + (item.year || '');
+    try { Object.defineProperty(item, '_ik', { value: k, enumerable: false, writable: true }); } catch (e) { /* */ }
+    return k;
+  }
   function imdbCached(item) { return imdbCache[imdbKey(item)] || null; }
   function saveImdb() {
     clearTimeout(imdbSaveT);
@@ -345,7 +352,16 @@
     };
   }
 
-  const API = { norm, hash, fetchText, fetchJSON, parseM3U, parseExtinf, cleanTitle, yearOf, langOf, loadList, loadXtreamSeries, loadEpg,
+  /** Quantas notas ainda podem ser buscadas hoje (OMDb grátis: 1.000/dia). */
+  function imdbBudget(max) {
+    const today = new Date().toISOString().slice(0, 10);
+    let b = {};
+    try { b = JSON.parse(localStorage.getItem('noir:imdbday') || '{}'); } catch (e) { b = {}; }
+    if (b.d !== today) b = { d: today, n: 0 };
+    return { left: Math.max(0, max - b.n), use(n) { b.n += n; try { localStorage.setItem('noir:imdbday', JSON.stringify(b)); } catch (e) { /* */ } } };
+  }
+
+  const API = { imdbBudget, norm, hash, fetchText, fetchJSON, parseM3U, parseExtinf, cleanTitle, yearOf, langOf, loadList, loadXtreamSeries, loadEpg,
     imdbFetch, imdbCached, imdbKey, PROVIDERS, loadNews };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   root.NoirData = API;

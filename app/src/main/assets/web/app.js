@@ -104,6 +104,7 @@
     liveRendered: 0, liveList: [],
     add: null,
     sheet: null,
+    rank: {}, rankGroups: {}, rankDirty: false, pendingRows: [],
   };
   const saveLists = () => store.set('lists', S.lists.map((l) => Object.assign({}, l, { fileText: undefined })));
   const saveSettings = () => store.set('settings', S.settings);
@@ -138,6 +139,9 @@
     for (const k in progs) progs[k].sort((a, b) => a[0] - b[0]);
     S.epg = { progs, names };
     S.featured = null;
+    S.rank = {};
+    S.rankGroups = {};
+    prefetchImdb();
   }
   function epgOf(ch) {
     if (!ch) return null;
@@ -233,7 +237,7 @@
     const src = img || it.logo;
     return `<div class="ph" style="background:${bg}"><i style="background:${fg};width:80%;height:55%;right:-22%;top:8%"></i></div>`
       + `<div class="tl">${esc(it.title || it.name)}</div>`
-      + (src ? `<img loading="lazy" src="${esc(src)}" alt="" onerror="this.remove()">` : '');
+      + (src ? `<img loading="lazy" decoding="async" src="${esc(src)}" alt="" onerror="this.remove()">` : '');
   }
   function heroBg(it) {
     if (it.backdrop) return `<img class="cover" src="${esc(it.backdrop)}" alt="" onerror="this.remove()">`;
@@ -258,7 +262,7 @@
   function chCard(ch, rk) {
     const nn = nowNext(ch);
     return `<button class="card land chcard f" data-act="playCh" data-id="${ch.id}" data-k="${rk}:${ch.id}" aria-label="${esc(ch.name)}" style="background:${pal(ch.name)[0]}">`
-      + `<div class="logo">${ch.logo ? `<img loading="lazy" src="${esc(ch.logo)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:${esc(JSON.stringify(ch.name))}}))">` : `<b>${esc(ch.name)}</b>`}</div>`
+      + `<div class="logo">${ch.logo ? `<img loading="lazy" decoding="async" src="${esc(ch.logo)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:${esc(JSON.stringify(ch.name))}}))">` : `<b>${esc(ch.name)}</b>`}</div>`
       + '<div class="sh"></div>'
       + `<div class="bdg"><span class="livebadge">AO VIVO</span></div>`
       + `<div class="nw"><span>${esc(nn.now ? nn.now[2] : ch.name)}</span><div class="bar"><i style="width:${nn.pct}%"></i></div></div></button>`;
@@ -302,7 +306,8 @@
   // ---------- roteador ----------
   function go(name, params, opts) {
     const o = opts || {};
-    if ((S.route.name === 'add' || S.route.name === 'addform') && name !== 'add' && name !== 'addform' && N) N.stopLan();
+    const lanScreens = ['add', 'addform', 'settings'];
+    if (lanScreens.includes(S.route.name) && !lanScreens.includes(name) && N) N.stopLan();
     if (o.root) S.stack = [];
     else if (!o.replace) S.stack.push({ name: S.route.name, params: S.route.params, focus: focusKey(), scroll: $('#main').scrollTop });
     S.route = { name, params: params || {} };
@@ -326,6 +331,8 @@
   const focusKey = () => { const a = document.activeElement; return a && a.dataset ? a.dataset.k || '' : ''; };
 
   function render(focusK, scroll) {
+    if (S.rankDirty) { S.rankDirty = false; S.rank = {}; S.rankGroups = {}; S.featured = null; }
+    navVis.clear();
     const fn = SCREENS[S.route.name] || SCREENS.home;
     const main = $('#main');
     main.innerHTML = fn(S.route.params);
@@ -360,7 +367,9 @@
     }
   }
   function afterRender() {
-    if (S.route.name === 'add') drawQr();
+    if (S.route.name === 'add' || S.route.name === 'settings') drawQr();
+    observeMoreRows();
+    trackNav();
   }
 
   // ---------- telas ----------
@@ -373,12 +382,11 @@
       <button class="btn pri f" data-act="go" data-r="add" data-autofocus>${I.plus}Adicionar lista</button></div>`;
   }
   function pickFeatured(kind) {
-    const pool = (kind === 'series' ? S.cat.series : S.cat.movies).filter((x) => x.logo).slice(0, 400);
-    if (!pool.length) return (kind === 'series' ? S.cat.series : S.cat.movies)[0] || null;
-    const rated = pool.filter((x) => imdbVal(x) >= 7);
-    const src = rated.length ? rated : pool;
+    const k = kind === 'series' ? 'series' : 'movies';
+    const pool = ranked(k).filter((x) => x.logo).slice(0, 10);
+    if (!pool.length) return ranked(k)[0] || null;
     const dayN = Math.floor(Date.now() / 86400000);
-    return src[dayN % src.length];
+    return pool[dayN % Math.min(pool.length, 5)];
   }
   function mobileTop() {
     return `<div class="mtop"><div class="r1">${LOGO()}<div style="display:flex">
@@ -429,20 +437,87 @@
     const myList = [...S.cat.movies, ...S.cat.series].filter((x) => S.favs.has(x.id)).slice(0, 30);
     if (myList.length) rows.push(row('Minha lista', '', myList.map((x) => posterCard(x, 'my')).join('')));
     if (S.settings.tmdbKey && S.news && S.news.recent.length) {
-      rows.push(row('Novidades nos streamings', '', S.news.recent.slice(0, 16).map((x) => landCard(x, 'hnews', {
+      const nr = S.news.recent.slice().sort((a, b) => imdbVal(b) - imdbVal(a));
+      rows.push(row('Novidades nos streamings', '', nr.slice(0, 16).map((x) => landCard(x, 'hnews', {
         img: x.backdrop || x.logo, right: `<span class="dark">${esc(x.svc)}</span>`,
       })).join('') + (TV ? '' : '')));
     }
-    const recentMovies = recentOf(S.cat.movies).slice(0, 30);
-    if (recentMovies.length) rows.push(row('Filmes adicionados recentemente', '', recentMovies.map((x) => posterCard(x, 'hrm')).join('')));
-    const ser = recentOf(S.cat.series).slice(0, 30);
-    if (ser.length) rows.push(row('Séries', '', ser.map((x) => posterCard(x, 'hse')).join('')));
-    const top = topRated([...S.cat.movies, ...S.cat.series]);
-    if (top.length >= 6) rows.push(row('Mais bem avaliados no IMDb', '', top.map((x) => posterCard(x, 'htop')).join('')));
-    return h + `<div class="rows">${rows.join('')}</div>`;
+    const rm = ranked('movies').slice(0, 20);
+    if (rm.length) rows.push(row('Lançamentos mais bem avaliados · Filmes', '', rm.map((x) => posterCard(x, 'hrm')).join('')));
+    const rs = ranked('series').slice(0, 20);
+    if (rs.length) rows.push(row('Lançamentos mais bem avaliados · Séries', '', rs.map((x) => posterCard(x, 'hse')).join('')));
+    rows.push(() => { const top = topRated([...S.cat.movies, ...S.cat.series]); return top.length >= 6 ? row('Mais bem avaliados no IMDb', '', top.slice(0, 20).map((x) => posterCard(x, 'htop')).join('')) : ''; });
+    rows.push(() => { const rec = recentOf(S.cat.movies).slice(0, 20); return rec.length ? row('Filmes adicionados recentemente', '', rec.map((x) => posterCard(x, 'hrec')).join('')) : ''; });
+    return h + `<div class="rows">${lazyRows(rows, 5)}</div>`;
   };
   const recentOf = (arr) => (arr.some((x) => x.added) ? arr.slice().sort((a, b) => (b.added || 0) - (a.added || 0)) : arr.slice().reverse());
   const topRated = (arr) => arr.filter((x) => imdbVal(x) > 0).sort((a, b) => imdbVal(b) - imdbVal(a)).slice(0, 30);
+
+  // ---------- ordem dos carrosséis: lançamentos com melhor nota IMDb primeiro ----------
+  const YEAR = new Date().getFullYear();
+  function rankScore(x) {
+    const y = parseInt(x.year, 10) || 0;
+    let rec = y >= YEAR - 1 ? 2 : (y >= YEAR - 3 ? 1 : 0);
+    if (!y && x.added && Date.now() - x.added < 120 * 86400000) rec = 2;
+    const r = imdbVal(x) || (x.rating ? Math.min(10, x.rating) * 0.9 : 0);
+    return rec * 100 + r * 10 + (x.added ? x.added / 1e13 : 0);
+  }
+  /** Lista ordenada + índice por grupo (calculados uma vez e reaproveitados). */
+  function ranked(kind) {
+    if (!S.rank[kind]) {
+      const arr = S.cat[kind].map((x) => [rankScore(x), x]).sort((a, b) => b[0] - a[0]).map((p) => p[1]);
+      const by = new Map();
+      for (const x of arr) { let g = by.get(x.group); if (!g) by.set(x.group, g = []); g.push(x); }
+      S.rank[kind] = arr;
+      S.rankGroups[kind] = by;
+    }
+    return S.rank[kind];
+  }
+  const rankedGroup = (kind, g) => { ranked(kind); return S.rankGroups[kind].get(g) || []; };
+  /** Busca em segundo plano as notas dos lançamentos (respeita o limite diário do OMDb). */
+  let prefetchT = 0;
+  function prefetchImdb() {
+    clearTimeout(prefetchT);
+    prefetchT = setTimeout(() => {
+      if (!S.settings.omdbKey || !S.settings.showImdb) return;
+      const budget = D.imdbBudget(700);
+      if (!budget.left) return;
+      const pick = (arr, n) => arr.filter((x) => (parseInt(x.year, 10) || 0) >= YEAR - 3 || (x.added && Date.now() - x.added < 120 * 86400000)).slice(0, n);
+      const cand = [...pick(ranked('movies'), 120), ...pick(ranked('series'), 60)].filter((x) => !D.imdbCached(x)).slice(0, budget.left);
+      if (!cand.length) return;
+      budget.use(cand.length);
+      let done = 0;
+      cand.forEach((x) => D.imdbFetch(x, S.settings.omdbKey).then(() => {
+        done++;
+        if (done % 20 === 0 || done === cand.length) S.rankDirty = true;
+      }));
+    }, 1500);
+  }
+
+  /** Fileiras: desenha as primeiras na hora e o resto conforme a tela desce. */
+  function lazyRows(list, first) {
+    const n = first || 6;
+    S.pendingRows = list.slice(n);
+    return list.slice(0, n).map((r) => (typeof r === 'function' ? r() : r)).join('') + (S.pendingRows.length ? '<div class="more-rows" id="moreRows"></div>' : '');
+  }
+  const rowsIO = 'IntersectionObserver' in window ? new IntersectionObserver((es) => {
+    for (const e of es) {
+      if (!e.isIntersecting) continue;
+      rowsIO.unobserve(e.target);
+      const box = e.target;
+      const next = S.pendingRows.splice(0, 6).map((r) => (typeof r === 'function' ? r() : r)).join('');
+      box.insertAdjacentHTML('beforebegin', next);
+      if (S.pendingRows.length) rowsIO.observe(box); else box.remove();
+      observeImdb();
+      trackNav();
+    }
+  }, { rootMargin: '900px 0px' }) : null;
+  function observeMoreRows() {
+    const m = $('#moreRows');
+    if (!m) return;
+    if (rowsIO) rowsIO.observe(m);
+    else { m.insertAdjacentHTML('beforebegin', S.pendingRows.map((r) => (typeof r === 'function' ? r() : r)).join('')); S.pendingRows = []; m.remove(); }
+  }
 
   // --- Minha área ---
   SCREENS.mine = () => {
@@ -527,7 +602,7 @@
   function chRowMobile(ch) {
     const nn = nowNext(ch);
     const fav = S.favs.has(ch.id);
-    return `<div class="chrow"><button class="lg f" data-act="playCh" data-id="${ch.id}" aria-label="Assistir ${esc(ch.name)}" style="border:0;color:inherit">${ch.logo ? `<img loading="lazy" src="${esc(ch.logo)}" alt="" onerror="this.remove()">` : esc(ch.name.slice(0, 8))}</button>
+    return `<div class="chrow"><button class="lg f" data-act="playCh" data-id="${ch.id}" aria-label="Assistir ${esc(ch.name)}" style="border:0;color:inherit">${ch.logo ? `<img loading="lazy" decoding="async" src="${esc(ch.logo)}" alt="" onerror="this.remove()">` : esc(ch.name.slice(0, 8))}</button>
       <button class="tx f" data-act="playCh" data-id="${ch.id}" style="border:0;background:none;color:inherit;text-align:left;padding:0">
       <span class="t1"><span>${esc(nn.now ? nn.now[2] : ch.name)}</span></span>
       ${nn.now ? `<div class="bar"><i style="width:${nn.pct}%"></i></div>` : ''}
@@ -546,7 +621,7 @@
     const head = TV ? `<div class="thead"><h1>${label}</h1>${chips(cats.slice(0, 60), cat, 'catChip', ` data-kind="${kind}"`)}</div>`
       : `<div class="phead"><h1>${label}</h1><button class="ib f" data-act="go" data-r="search" aria-label="Buscar">${I.search}</button></div><div style="padding:1.2rem 2rem">${chips(cats, cat, 'catChip', ` data-kind="${kind}"`)}</div>`;
     if (cat !== 'Todos') {
-      const items = cat === 'Minha lista' ? all.filter((x) => S.favs.has(x.id)) : all.filter((x) => x.group === cat);
+      const items = cat === 'Minha lista' ? ranked(kind).filter((x) => S.favs.has(x.id)) : rankedGroup(kind, cat);
       const lim = p.lim || 140;
       return head + (items.length ? `<div class="grid">${items.slice(0, lim).map((x) => posterCard(x, 'g')).join('')}</div>
         ${items.length > lim ? `<div style="padding:0 ${TV ? '8rem 8rem' : '2rem 2rem'}"><button class="btn f" data-act="moreGrid" data-lim="${lim + 140}">Mostrar mais (${num(items.length - lim)})</button></div>` : ''}`
@@ -555,16 +630,19 @@
     const f = pickFeatured(kind);
     const rows = [];
     const mine = all.filter((x) => S.favs.has(x.id));
-    if (mine.length) rows.push(row('Minha lista', '', mine.slice(0, 30).map((x) => posterCard(x, 'my')).join('')));
+    if (mine.length) rows.push(row('Minha lista', '', mine.slice(0, 20).map((x) => posterCard(x, 'my')).join('')));
     const top = topRated(all);
     if (top.length >= 6) rows.push(row('Mais bem avaliados no IMDb', 'ordenado pela nota', top.map((x) => posterCard(x, 'top')).join('')));
-    rows.push(row('Adicionados recentemente', '', recentOf(all).slice(0, 30).map((x) => posterCard(x, 'rec')).join('')));
-    S.groups[kind].slice(0, 24).forEach((g, gi) => {
-      const items = all.filter((x) => x.group === g);
-      rows.push(row(esc(g), `${num(items.length)} títulos`, items.slice(0, 30).map((x) => posterCard(x, 'gr' + gi)).join('')));
+    rows.unshift(row('Lançamentos mais bem avaliados', '', ranked(kind).slice(0, 20).map((x) => posterCard(x, 'rk')).join('')));
+    rows.push(() => row('Adicionados recentemente', '', recentOf(all).slice(0, 20).map((x) => posterCard(x, 'rec')).join('')));
+    S.groups[kind].slice(0, 40).forEach((g, gi) => {
+      rows.push(() => {
+        const items = rankedGroup(kind, g);
+        return row(esc(g), `${num(items.length)} títulos`, items.slice(0, 20).map((x) => posterCard(x, 'gr' + gi)).join(''));
+      });
     });
     const heroB = TV ? `<section class="hero" style="height:46rem;margin-bottom:0" id="cathero">${heroInner(f, kind === 'movies' ? 'FILME EM DESTAQUE' : 'SÉRIE EM DESTAQUE')}</section>` : '';
-    return head + heroB + `<div class="rows">${rows.join('')}</div>`;
+    return head + heroB + `<div class="rows">${lazyRows(rows, 4)}</div>`;
   }
   function heroInner(it, kicker) {
     if (!it) return '';
@@ -662,7 +740,7 @@
     }
     if (!S.news) { refreshNews(); return head + (S.newsErr ? `<div class="empty"><p>${esc(S.newsErr)}</p></div>` : spinner('Buscando novidades…')); }
     const svc = p.svc || 'Todos';
-    const recent = S.news.recent.filter((x) => svc === 'Todos' || x.svc === svc);
+    const recent = S.news.recent.filter((x) => svc === 'Todos' || x.svc === svc).sort((a, b) => imdbVal(b) - imdbVal(a));
     const rows = [];
     rows.push(row('Chegou recentemente', svc === 'Todos' ? '' : svc, recent.slice(0, 24).map((x, i) => landCard(x, 'nr', {
       big: i < 3 && TV, img: x.backdrop || x.logo, badge: '<span class="livebadge">NOVO</span>', right: `<span class="dark">${esc(x.svc)}</span>`,
@@ -714,7 +792,7 @@
     const f = $('#sfield');
     if (f) f.innerHTML = I.search + (S.q ? `<span>${esc(S.q)}</span><span class="caret"></span>` : '<span class="ph">Buscar</span><span class="caret"></span>');
     const r = $('#sres');
-    if (r) { r.innerHTML = resultsHtml(); observeImdb(); }
+    if (r) { r.innerHTML = resultsHtml(); observeImdb(); trackNav(); }
   }
   function saveRecent() {
     const q = S.q.trim();
@@ -773,6 +851,7 @@
     show: () => `<h2>Exibição</h2><div class="panel">${toggle('Mostrar notas IMDb', 'showImdb')}${toggle('Atualizar listas automaticamente', 'autoUpdate')}${toggle('Ocultar conteúdo adulto', 'hideAdult')}</div>`,
     keys: () => `<h2>Chaves de API</h2>
       <p class="hint">Opcionais e gratuitas. Ficam salvas só neste aparelho.</p>
+      ${TV ? keysQr() : ''}
       <label class="field"><span>OMDb — notas IMDb (omdbapi.com › API Key)</span><input class="f" id="kOmdb" value="${esc(S.settings.omdbKey)}" placeholder="ex.: a1b2c3d4" autocomplete="off" data-k="k:omdb"></label>
       <label class="field"><span>TMDB — novidades nos streamings (themoviedb.org › Configurações › API)</span><input class="f" id="kTmdb" value="${esc(S.settings.tmdbKey)}" placeholder="Chave da API (v3) ou token de leitura (v4)" autocomplete="off" data-k="k:tmdb"></label>
       <div><button class="btn pri f" data-act="saveKeys" data-k="k:save">${I.check}Salvar chaves</button></div>`,
@@ -781,6 +860,15 @@
       <button class="prow f" data-act="clearNews" data-k="ab:news"><span>Recarregar novidades</span><span class="v">›</span></button></div>
       <p class="ver">Gatoflix ${N ? 'v' + esc(N.version()) : '(navegador)'} · ${TV ? 'Android TV' : 'Celular'}</p>`,
   };
+  function keysQr() {
+    let lan = '';
+    if (N) { try { lan = N.startLan(); } catch (e) { lan = ''; } }
+    S.lanUrl = lan ? lan.replace('/?t=', '/keys?t=') : '';
+    if (!S.lanUrl) return `<p class="hint">${N ? 'Conecte a TV ao Wi-Fi para colar as chaves pelo celular.' : 'No app da TV aparece aqui um QR Code para colar as chaves pelo celular.'}</p>`;
+    return `<div class="qrbox"><div class="qr" id="qr" role="img" aria-label="QR Code para inserir as chaves pelo celular"></div>
+      <div class="qrtx"><b>Cole as chaves pelo celular</b><span>1. Celular no mesmo Wi-Fi da TV<br>2. Aponte a câmera para o QR Code<br>3. Cole as chaves e toque em Enviar</span><code>${esc(S.lanUrl.replace(/\?t=.*/, ''))}</code></div></div>
+      <span class="lbl">OU DIGITE COM O CONTROLE</span>`;
+  }
   const CFG_CATS = [['lists', 'Listas de conteúdo'], ['play', 'Reprodução e legendas'], ['show', 'Exibição'], ['keys', 'Chaves de API'], ['about', 'Sobre']];
   SCREENS.settings = (p) => {
     if (!TV) {
@@ -1211,13 +1299,23 @@
   document.addEventListener('keyup', (e) => { if (e.target.id === 'sq' && e.key === 'Enter') { saveRecent(); e.target.blur(); } });
 
   // ---------- navegação por controle remoto (D-pad) ----------
+  // Itens focáveis perto da tela (atualizado pelo navegador, sem medir tudo a cada tecla).
+  const navVis = new Set();
+  const navSeen = new WeakSet();
+  const navIO = 'IntersectionObserver' in window ? new IntersectionObserver((es) => {
+    for (const e of es) { if (e.isIntersecting) navVis.add(e.target); else navVis.delete(e.target); }
+  }, { rootMargin: '100% 0px 100% 0px' }) : null;
+  function trackNav() {
+    if (!navIO || !TV) return;
+    for (const el of $$('#main .f')) { if (!navSeen.has(el)) { navSeen.add(el); navIO.observe(el); } }
+  }
+  const usable = (el) => { if (el.disabled || !el.isConnected) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
   function focusables() {
-    const root = S.sheet ? $('#overlay') : document;
-    return $$('.f', root).filter((el) => {
-      if (el.disabled) return false;
-      const r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0;
-    });
+    if (S.sheet) return $$('.f', $('#overlay')).filter(usable);
+    const nav = $$('#nav .f');
+    const vis = Array.from(navVis).filter((el) => el.isConnected);
+    const list = vis.length ? nav.concat(vis) : $$('.f');
+    return list.filter(usable);
   }
   function focusEl(el, instant) {
     try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
@@ -1244,6 +1342,16 @@
   }
   function move(dir) {
     const cur = document.activeElement;
+    if (!S.sheet && cur && cur.classList && cur.classList.contains('f') && (dir === 'left' || dir === 'right')) {
+      // Dentro de uma fileira: vai direto para o vizinho (rápido, sem medir a tela).
+      const track = cur.closest('.track,.chips,.eps');
+      if (track) {
+        const items = $$('.f', track).filter((x) => !x.disabled);
+        const i = items.indexOf(cur);
+        const nxt = items[dir === 'right' ? i + 1 : i - 1];
+        if (i >= 0 && nxt) { focusEl(nxt); return; }
+      }
+    }
     const list = focusables();
     if (!list.length) return;
     if (!cur || !list.includes(cur)) { focusEl(($('#main [data-autofocus]') && list.includes($('#main [data-autofocus]'))) ? $('#main [data-autofocus]') : list[0]); return; }
@@ -1284,6 +1392,10 @@
       if (!TV && !typing) return;
       if (typing && (k === 'ArrowLeft' || k === 'ArrowRight')) return;
       e.preventDefault();
+      // Segurar a seta: limita a ~14 passos por segundo para a tela acompanhar.
+      const now = performance.now();
+      if (e.repeat && now - (S.lastMove || 0) < 70) return;
+      S.lastMove = now;
       move(k.slice(5).toLowerCase());
     } else if (k === 'Enter' && a && a.classList.contains('f') && !typing && a.tagName !== 'BUTTON' && a.tagName !== 'A') {
       e.preventDefault();
@@ -1318,6 +1430,7 @@
         const next = S.liveList.slice(S.liveRendered, S.liveRendered + 80);
         $('#epgbody').insertAdjacentHTML('beforeend', next.map((c, i) => epgRow(c, S.liveRendered + i, t0)).join(''));
         S.liveRendered += next.length;
+        trackNav();
       }
     } else if (h === 'hero') {
       const hero = $('#cathero');
@@ -1336,6 +1449,8 @@
         S.route.params = { cat: el.dataset.v };
         pane.innerHTML = PANES[el.dataset.v]();
         $$('.cfg-cat').forEach((b) => b.classList.toggle('on', b === el));
+        drawQr();
+        trackNav();
       }
     }
   });
@@ -1349,6 +1464,16 @@
     onLanAdd(json) {
       let o;
       try { o = JSON.parse(json); } catch (e) { return; }
+      if (o.type === 'keys') {
+        let n = 0;
+        if (o.omdb) { S.settings.omdbKey = o.omdb.trim(); n++; }
+        if (o.tmdb && o.tmdb.trim() !== S.settings.tmdbKey) { S.settings.tmdbKey = o.tmdb.trim(); S.news = null; store.set('news', null); refreshNews(true); n++; }
+        saveSettings();
+        toast(n ? 'Miau! Chaves recebidas do celular' : 'Nenhuma chave preenchida');
+        softRender();
+        observeImdb();
+        return;
+      }
       const type = ['m3u', 'vod', 'xtream', 'epg'].includes(o.type) ? o.type : 'm3u';
       toast('Lista recebida do celular');
       S.add = null;
@@ -1386,7 +1511,7 @@
       }
     }
     refreshNews();
-    setInterval(() => { if (S.route.name === 'live' || S.route.name === 'home') softRender(); }, 60000);
+    setInterval(() => { if (S.route.name === 'live' && !S.sheet) softRender(); }, 60000);
   }
   boot();
 })();

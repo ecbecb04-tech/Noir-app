@@ -140,6 +140,8 @@ final class LanServer {
                 listener.onData(o.toString());
                 respond(s, 200, page("Enviado para a TV ✓",
                         "<p>A lista está sendo importada. Pode fechar esta página.</p>"));
+            } else if (path.startsWith("/keys")) {
+                respond(s, 200, keysForm());
             } else {
                 respond(s, 200, form());
             }
@@ -172,6 +174,16 @@ final class LanServer {
     private static String page(String title, String body) {
         return "<!doctype html><html lang=pt-BR><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
                 + "<title>Gatoflix</title><style>" + CSS + "</style></head><body><div class=b>gatoflix</div><h1>" + title + "</h1>" + body + "</body></html>";
+    }
+
+    /** Formulário das chaves de API (notas IMDb e novidades), preenchido no celular. */
+    private String keysForm() {
+        return page("Chaves de API na TV",
+                "<p>Cole as chaves e toque em Enviar. Deixe em branco a que não quiser trocar.</p>"
+                        + "<form method=post action='/add?t=" + token + "'><input type=hidden name=type value=keys>"
+                        + "<label>OMDb — notas IMDb (omdbapi.com › API Key)</label><input name=omdb autocomplete=off autocapitalize=off spellcheck=false placeholder='ex.: a1b2c3d4'>"
+                        + "<label>TMDB — novidades nos streamings (themoviedb.org › Configurações › API)</label><input name=tmdb autocomplete=off autocapitalize=off spellcheck=false placeholder='Chave (v3) ou token de leitura (v4)'>"
+                        + "<button type=submit>Enviar para a TV</button></form>");
     }
 
     private String form() {

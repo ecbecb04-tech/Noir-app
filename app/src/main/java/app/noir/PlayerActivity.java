@@ -3,12 +3,16 @@ package app.noir;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.LruCache;
 import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.View;
@@ -16,6 +20,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.BaseAdapter;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -33,13 +38,18 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.ui.CaptionStyleCompat;
+import androidx.media3.ui.DefaultTimeBar;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.ui.SubtitleView;
+import androidx.media3.ui.TimeBar;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.Locale;
 
 /**
@@ -62,6 +72,19 @@ public class PlayerActivity extends Activity {
     private String key;
     private boolean live, series, skipUsed;
     private int skipIntroSec;
+    // prévia da cena ao avançar/voltar
+    private DefaultTimeBar timeBar;
+    private View preview;
+    private ImageView previewImg;
+    private TextView previewTime;
+    private final ExecutorService frames = Executors.newSingleThreadExecutor();
+    private final LruCache<Long, Bitmap> frameCache = new LruCache<>(60);
+    private volatile String currentUrl = "";
+    private volatile long pendingFrame = -1;
+    private volatile boolean extracting;
+    private MediaMetadataRetriever retriever; // usado só na thread "frames"
+    private String retrieverUrl;
+    private volatile boolean retrieverFailed;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable hideInfo = () -> {
         if (view != null && !view.isControllerFullyVisible() && !panelOpen()) infoBar.setVisibility(View.GONE);
@@ -91,6 +114,9 @@ public class PlayerActivity extends Activity {
         listBtn = findViewById(R.id.list_btn);
         skipBtn = findViewById(R.id.skip);
         nextBtn = findViewById(R.id.next);
+        preview = findViewById(R.id.preview);
+        previewImg = findViewById(R.id.preview_img);
+        previewTime = findViewById(R.id.preview_time);
         view.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
 
@@ -132,6 +158,8 @@ public class PlayerActivity extends Activity {
         player = new ExoPlayer.Builder(this)
                 .setMediaSourceFactory(msf)
                 .setTrackSelector(ts)
+                .setSeekBackIncrementMs(10_000)
+                .setSeekForwardIncrementMs(10_000)
                 .build();
         player.addListener(new Player.Listener() {
             @Override
@@ -169,6 +197,29 @@ public class PlayerActivity extends Activity {
         });
         styleSubtitles(payload.optString("subSize", "M"));
 
+        // Barra de tempo: cada toque no controle avança/volta 10 s, com miniatura da cena.
+        View tbv = view.findViewById(androidx.media3.ui.R.id.exo_progress);
+        if (tbv instanceof DefaultTimeBar) {
+            timeBar = (DefaultTimeBar) tbv;
+            timeBar.setKeyTimeIncrement(10_000);
+            timeBar.addListener(new TimeBar.OnScrubListener() {
+                @Override
+                public void onScrubStart(TimeBar t, long position) {
+                    showPreview(position);
+                }
+
+                @Override
+                public void onScrubMove(TimeBar t, long position) {
+                    showPreview(position);
+                }
+
+                @Override
+                public void onScrubStop(TimeBar t, long position, boolean canceled) {
+                    preview.setVisibility(View.GONE);
+                }
+            });
+        }
+
         boolean hasList = queue != null && queue.length() > 1;
         if (hasList) {
             listBtn.setText(live ? "☰  Canais" : "☰  Episódios");
@@ -180,7 +231,7 @@ public class PlayerActivity extends Activity {
                 closePanel();
                 loadFromQueue(pos);
             });
-            hint.setText(live ? "◀ lista de canais  ·  ▲▼ trocar canal" : "◀ lista de episódios");
+            hint.setText(live ? "◀ lista de canais  ·  ▲▼ trocar canal" : "◀ ▶ voltar/avançar 10 s  ·  ▲ Episódios");
             // Na TV: com os controles visíveis, ▲ leva até o botão; OK abre a lista.
             listBtn.setOnKeyListener((v, keyCode, ev) -> {
                 if (ev.getAction() == KeyEvent.ACTION_DOWN && (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
@@ -189,6 +240,8 @@ public class PlayerActivity extends Activity {
                 }
                 return false;
             });
+        } else if (!live) {
+            hint.setText("◀ ▶ voltar/avançar 10 s");
         } else {
             hint.setVisibility(View.GONE);
         }
@@ -311,6 +364,10 @@ public class PlayerActivity extends Activity {
         String url = item.optString("url", payload.optString("url"));
         key = item.optString("key", url);
         skipUsed = false;
+        currentUrl = url;
+        retrieverFailed = false;
+        frameCache.evictAll();
+        preview.setVisibility(View.GONE);
         title.setText(item.optString("title", payload.optString("title", "")));
         String info = item.optString("info", "");
         subtitle.setText(info);
@@ -338,10 +395,7 @@ public class PlayerActivity extends Activity {
         player.setMediaItem(mb.build());
         if (!live) {
             long[] p = readProgress(key);
-            if (p[0] > 30_000 && (p[1] <= 0 || p[0] < p[1] - 60_000)) {
-                player.seekTo(p[0]);
-                skipUsed = true; // retomando: a abertura já passou
-            }
+            if (p[0] > 30_000 && (p[1] <= 0 || p[0] < p[1] - 60_000)) player.seekTo(p[0]);
         }
         player.prepare();
         player.setPlayWhenReady(true);
@@ -359,8 +413,8 @@ public class PlayerActivity extends Activity {
         }
         long pos = player.getCurrentPosition();
         long dur = player.getDuration();
-        boolean showSkip = series && skipIntroSec > 0 && !skipUsed && pos > 2_000 && pos < 240_000
-                && (dur == C.TIME_UNSET || dur > 8 * 60_000);
+        boolean showSkip = series && skipIntroSec > 0 && !skipUsed && pos > 1_000 && pos < 300_000
+                && (dur == C.TIME_UNSET || dur > 6 * 60_000);
         boolean showNext = series && hasNext() && dur != C.TIME_UNSET && dur > 0 && dur - pos < 60_000;
         if (showNext) showSkip = false;
         skipBtn.setVisibility(showSkip ? View.VISIBLE : View.GONE);
@@ -418,9 +472,15 @@ public class PlayerActivity extends Activity {
                 if (skipBtn.getVisibility() == View.VISIBLE) { skipIntro(); return true; }
                 if (nextBtn.getVisibility() == View.VISIBLE && hasNext()) { loadFromQueue(index + 1); return true; }
             }
-            if (hasList && (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_MENU || k == KeyEvent.KEYCODE_GUIDE)) {
+            if (hasList && (k == KeyEvent.KEYCODE_MENU || k == KeyEvent.KEYCODE_GUIDE || (live && k == KeyEvent.KEYCODE_DPAD_LEFT))) {
                 openPanel();
                 return true;
+            }
+            if (!live && timeBar != null && (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+                // Filmes e séries: ◀ ▶ avançam/voltam 10 s mostrando a cena.
+                view.showController();
+                timeBar.requestFocus();
+                return timeBar.dispatchKeyEvent(e) || super.dispatchKeyEvent(e);
             }
             if (live && hasList) {
                 if (k == KeyEvent.KEYCODE_CHANNEL_UP || k == KeyEvent.KEYCODE_DPAD_UP) {
@@ -453,6 +513,84 @@ public class PlayerActivity extends Activity {
             return;
         }
         super.onBackPressed();
+    }
+
+    // ---------- prévia da cena ----------
+
+    private void showPreview(long pos) {
+        if (live || player == null) return;
+        long dur = player.getDuration();
+        previewTime.setText(fmt(pos) + (dur > 0 && dur != C.TIME_UNSET ? "  /  " + fmt(dur) : ""));
+        preview.setVisibility(View.VISIBLE);
+        if (timeBar != null && dur > 0 && dur != C.TIME_UNSET) {
+            int[] loc = new int[2];
+            timeBar.getLocationOnScreen(loc);
+            float x = loc[0] + timeBar.getWidth() * (pos / (float) dur) - preview.getWidth() / 2f;
+            int max = getWindow().getDecorView().getWidth() - preview.getWidth() - dp(16);
+            preview.setX(Math.max(dp(16), Math.min(x, max)));
+        }
+        long bucket = pos / 5_000;
+        Bitmap cached = frameCache.get(bucket);
+        if (cached != null) {
+            previewImg.setImageBitmap(cached);
+            return;
+        }
+        pendingFrame = pos;
+        if (!extracting && !retrieverFailed) {
+            extracting = true;
+            frames.execute(this::extractLoop);
+        }
+    }
+
+    /** Roda na thread "frames": sempre extrai o pedido mais recente. */
+    private void extractLoop() {
+        try {
+            while (pendingFrame >= 0) {
+                long pos = pendingFrame;
+                pendingFrame = -1;
+                String url = currentUrl;
+                Bitmap b = frameAt(url, pos);
+                if (b == null) continue;
+                long bucket = pos / 5_000;
+                runOnUiThread(() -> {
+                    if (!url.equals(currentUrl)) return;
+                    frameCache.put(bucket, b);
+                    if (preview.getVisibility() == View.VISIBLE) previewImg.setImageBitmap(b);
+                });
+            }
+        } finally {
+            extracting = false;
+        }
+    }
+
+    private Bitmap frameAt(String url, long posMs) {
+        try {
+            if (retriever == null || !url.equals(retrieverUrl)) {
+                if (retriever != null) retriever.release();
+                retriever = new MediaMetadataRetriever();
+                retrieverUrl = url;
+                HashMap<String, String> h = new HashMap<>();
+                h.put("User-Agent", Net.uaFor(url));
+                retriever.setDataSource(url, h);
+            }
+            long us = posMs * 1000L;
+            if (Build.VERSION.SDK_INT >= 27) {
+                return retriever.getScaledFrameAtTime(us, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 384, 216);
+            }
+            Bitmap f = retriever.getFrameAtTime(us, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+            if (f == null) return null;
+            int w = 384, hgt = Math.max(1, Math.round(384f * f.getHeight() / Math.max(1, f.getWidth())));
+            return Bitmap.createScaledBitmap(f, w, hgt, true);
+        } catch (Exception e) {
+            // Formato/servidor sem suporte a miniaturas: segue mostrando só o tempo.
+            retrieverFailed = url.equals(retrieverUrl);
+            return null;
+        }
+    }
+
+    private static String fmt(long ms) {
+        long s = Math.max(0, ms / 1000), h = s / 3600, m = (s % 3600) / 60, ss = s % 60;
+        return h > 0 ? String.format(Locale.US, "%d:%02d:%02d", h, m, ss) : String.format(Locale.US, "%d:%02d", m, ss);
     }
 
     // ---------- histórico e progresso ----------
@@ -521,6 +659,13 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
+        frames.execute(() -> {
+            try {
+                if (retriever != null) retriever.release();
+            } catch (Exception ignored) {
+            }
+        });
+        frames.shutdown();
         if (player != null) {
             saveProgress();
             player.release();
